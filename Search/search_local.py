@@ -7,7 +7,7 @@ import asyncio
 
 
 async def main():
-    llm = ChatOllama(model="mistral:latest")
+    llm = ChatOllama(model="llama3.2:1b")
 
     agent = Agent(
         task="Go to Reddit, search for 'browser-use', click on the first post and return the first comment.",
