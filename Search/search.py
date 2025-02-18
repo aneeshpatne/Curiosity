@@ -68,9 +68,10 @@ async def main():
         scrape_task = f"""go to URL: {url}
                 1. close any popups that appear.
                 2. extract all text.
-                3. ignore any irrelevant information like ads, comments, etc.
-                4. scroll aggresively. 
-                5. dont spend more than 2 steps without scrolling.
+                3. DONT SCROLL.
+                4. if any relevant information is present, extract it.
+                5. or else close the tab, ASAP. 
+                6. DO NOT SCROLL, if you feel like you have to scroll, close the tab.
                 6. if u see even 1 advert or irrelevant information, close the tab.
         Return a JSON object following this structure:
         {{
