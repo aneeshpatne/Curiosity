@@ -2,7 +2,7 @@ import os
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 from dotenv import load_dotenv
-
+from pydantic import SecretStr
 # Load environment variables from a .env file if present
 load_dotenv()
 
