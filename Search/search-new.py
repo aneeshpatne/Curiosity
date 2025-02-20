@@ -7,8 +7,10 @@ from playwright.async_api import async_playwright
 import asyncio
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
+api_key_groq = os.getenv("GROQ_KEY")
 ddgs = DDGS()
-llm=ChatOpenAI(model='gpt-4o-mini-2024-07-18', api_key=SecretStr(api_key), temperature=0.0)
+llm=ChatOpenAI(model='gpt-4o-2024-08-06', api_key=SecretStr(api_key), temperature=0.7)
+groqLLM = ChatOpenAI(model='deepseek-r1-distill-llama-70b', api_key=SecretStr(api_key_groq), temperature=0.0, base_url="https://api.groq.com/openai/v1")
 
 async def scrape_page(context, url):
     """Scrapes a single page using an existing browser instance."""
@@ -17,7 +19,7 @@ async def scrape_page(context, url):
         await page.goto(url, wait_until='load')
         text_blocks = await page.locator("body p, body h1, body h2, body h3, body h4, body h5, body h6").all_text_contents()
         cleaned_text = "\n".join([t.strip() for t in text_blocks if t.strip()])
-        important_text = cleaned_text[:2000]
+        important_text = cleaned_text[:5000]
         return important_text if important_text else "No text found"
     except Exception as e:
         return f"Error scraping page: {str(e)}"
@@ -25,9 +27,9 @@ async def scrape_page(context, url):
         await page.close()
 
 async def searchAgent(topic):
-    result = ddgs.text(topic, max_results=5)
+    result = ddgs.text(topic, max_results=10)
     links = [r['href'] for r in result]
-    print("Search Results:", links)
+    print("Search Results Generated")
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
@@ -35,23 +37,25 @@ async def searchAgent(topic):
         scraped_contents = await asyncio.gather(*tasks)
         ls = []
         for index, content in enumerate(scraped_contents, start=1):
-            ls.append(str(f"[{index}]", content))
-        print("".join(ls))
+            ls.append(f"[{index}] {content}")
+        print("Scrapped Contents:")
+        summary = summarize(ls,topic)
+        print("Summary:", summary)
         await browser.close()
     
 def summarize(content, query):
     prompt = (
-        f"The user searched for: '{query}'.\n\n"
-        f"The following text was retrieved and includes citations (e.g., [1], [2]):\n\n{content}\n\n"
-        "Your task is to produce a concise, factual summary of the relevant information from the text. "
-        "Ignore any irrelevant content. If the provided text contains little or no relevant information, "
-        "return a fallback message such as 'Insufficient relevant information found.' "
-        "Ensure that you preserve any citation labels (e.g., [1], [2]) exactly as they appear. "
-        "Return only the summarized content with no additional commentary."
+        f"The user has submitted the following query: '{query}'. Using the provided sources: {content}, "
+        "please craft a thorough, well-rounded, and detailed response that directly addresses the user's question with clarity and depth. "
+        "Incorporate a comprehensive summary of the most relevant information, including key points, supporting evidence, contextual explanations, and any additional insights drawn from the sources that enhance the answer. "
+        "Ensure the response remains focused by excluding any extraneous or unrelated material, while carefully preserving citation labels (e.g., [1], [2]) to maintain accuracy and traceability to the original content. "
+        "Some sources may contain overlapping or redundant information; please synthesize the data to avoid repetition and present a cohesive response that covers all aspects of the query. "
+        "you can also include your own knowledge and expertise to provide a complete and well-rounded answer. "
+        "Keep a formal and professional tone throughout the response. "
+        "If the sources lack sufficient data to fully address the query, conclude with: 'Insufficient relevant information found,' and briefly explain why the available information falls short of providing a complete answer."
     )
-
     response = llm.invoke(prompt)
-    return response.content
+    return response
 
 
 if __name__ == "__main__":
