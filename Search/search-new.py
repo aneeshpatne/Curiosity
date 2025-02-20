@@ -9,7 +9,7 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 api_key_groq = os.getenv("GROQ_KEY")
 ddgs = DDGS()
-llm=ChatOpenAI(model='gpt-4o-2024-08-06', api_key=SecretStr(api_key), temperature=0.7)
+llm=ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
 groqLLM = ChatOpenAI(model='deepseek-r1-distill-llama-70b', api_key=SecretStr(api_key_groq), temperature=0.0, base_url="https://api.groq.com/openai/v1")
 
 async def scrape_page(context, url):
@@ -27,7 +27,7 @@ async def scrape_page(context, url):
         await page.close()
 
 async def searchAgent(topic):
-    result = ddgs.text(topic, max_results=10)
+    result = ddgs.text(topic, max_results=4)
     links = [r['href'] for r in result]
     print("Search Results Generated")
     async with async_playwright() as p:
@@ -52,14 +52,15 @@ def summarize(content, query):
         "Some sources may contain overlapping or redundant information; please synthesize the data to avoid repetition and present a cohesive response that covers all aspects of the query. "
         "you can also include your own knowledge and expertise to provide a complete and well-rounded answer. "
         "Keep a formal and professional tone throughout the response. "
+        "Only cite the sources in the format [] [] separately. "
         "If the sources lack sufficient data to fully address the query, conclude with: 'Insufficient relevant information found,' and briefly explain why the available information falls short of providing a complete answer."
     )
     response = llm.invoke(prompt)
-    return response
+    return response.content
 
 
 if __name__ == "__main__":
-    topic = "Devendra Fadnavis News"
+    topic = "Eknath Shinde Fadnavis Rift"
     topic += "ENGLISH ONLY"
     asyncio.run(searchAgent(topic))
 
