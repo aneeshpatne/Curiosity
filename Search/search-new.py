@@ -7,9 +7,11 @@ from playwright.async_api import async_playwright
 import asyncio
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
+api_key_openRouter = os.getenv("OPEN_ROUTER_KEY")
 api_key_groq = os.getenv("GROQ_KEY")
 ddgs = DDGS()
 llm=ChatOpenAI(model='o1-mini', api_key=SecretStr(api_key))
+openRouterLLM = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='perplexity/r1-1776', api_key=SecretStr(api_key_openRouter))
 groqLLM = ChatOpenAI(model='deepseek-r1-distill-llama-70b', api_key=SecretStr(api_key_groq), temperature=0.0, base_url="https://api.groq.com/openai/v1")
 
 async def scrape_page(context, url):
@@ -56,7 +58,7 @@ def summarize(content, query):
         "Dont mention the source at the end of your response. "
         "If the sources lack sufficient data to fully address the query, conclude with: 'Insufficient relevant information found,' and briefly explain why the available information falls short of providing a complete answer."
     )
-    response = llm.invoke(prompt)
+    response = openRouterLLM.invoke(prompt)
     return response.content
 
 
