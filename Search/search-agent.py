@@ -5,8 +5,6 @@ from dotenv import load_dotenv
 import os
 from playwright.async_api import async_playwright
 import asyncio
-from langchain.tools import Tool
-from langchain.agents import initialize_agent, AgentType
 from langchain.memory import ConversationBufferMemory
 
 # Load environment variables
@@ -15,7 +13,7 @@ api_key = os.getenv("OPENAI_API_KEY")
 openRouterKey = os.getenv("OPEN_ROUTER_KEY")
 
 # Initialize LLMs
-summary_llm = ChatOpenAI(model='o1-mini', api_key=SecretStr(api_key))
+summary_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
 agent_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
 
 # Memory to track conversation history (Deprecated, but still functional for now)
@@ -31,7 +29,7 @@ async def scrape_page(context, url):
         await page.goto(url, wait_until='load')
         text_blocks = await page.locator("body p, body h1, body h2, body h3, body h4, body h5, body h6").all_text_contents()
         cleaned_text = "\n".join([t.strip() for t in text_blocks if t.strip()])
-        important_text = cleaned_text[:10000]
+        important_text = cleaned_text[:1000]
         return important_text if important_text else "No text found"
     except Exception as e:
         return f"Error scraping page: {str(e)}"
@@ -40,7 +38,7 @@ async def scrape_page(context, url):
 
 async def searchAgent(topic):
     """Searches for the topic, scrapes data, and summarizes it."""
-    result = ddgs.text(topic, max_results=10)
+    result = ddgs.text(topic, max_results=3)
     links = [r['href'] for r in result]
     print("Search Results Generated")
     async with async_playwright() as p:
@@ -51,9 +49,8 @@ async def searchAgent(topic):
         ls = []
         for index, content in enumerate(scraped_contents, start=1):
             ls.append(f"[{index}] {content}")
-        print("Scraped Contents:")
+        print("Scraped Contents")
         summary = await summarize(ls, topic)
-        print("Summary:", summary)
         await browser.close()
         return summary
 
@@ -69,43 +66,38 @@ async def summarize(content, query):
     response = await summary_llm.ainvoke(prompt)
     return response.content
 
-# Define the search tool (fixed with func=None)
-search_tool = Tool(
-    name="WebSearch",
-    func=None,  # Explicitly set for async-only tool
-    coroutine=searchAgent,  # Async function
-    description="Use this tool when additional web search is needed to answer the user's question."
-)
-
-# Initialize an agent with function-calling ability
-agent = initialize_agent(
-    tools=[search_tool],
-    llm=agent_llm,
-    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-    verbose=True
-)
-
 async def follow_up(question):
-    """Handles follow-up questions using conversation history or web search if needed."""
+    """Handles questions using conversation history or web search."""
     previous_conversations = memory.load_memory_variables({})
-    prompt = (
-        f"The user has asked a follow-up question: '{question}'.\n"
-        f"Here is the previous conversation for context: {previous_conversations}\n"
-        "First, determine whether you can answer this using existing information.\n"
-        "If more information is needed, call the WebSearch tool to retrieve data.\n"
-        "After you call the WebSearch tool display the answer as-is its a summarised version and you are not needed to do anything with it.\n"
-        "Otherwise, respond directly using the provided context."
+    decision_prompt = (
+        f"Based on the conversation history: {previous_conversations}\n"
+        f"and the new question: '{question}', do you need to use WebSearch to answer this question? Answer 'yes' or 'no'."
     )
-    response_dict = await agent.ainvoke({"input": prompt})  # Pass dict and await
-    response = response_dict["output"]  # Extract output
+    decision = (await agent_llm.ainvoke(decision_prompt)).content.strip().lower()
+    if "yes" in decision:
+        print("Using WebSearch to get the answer...")
+        response = await searchAgent(question)
+    else:
+        answer_prompt = (
+            f"Based on the conversation history: {previous_conversations}\n"
+            f"answer the question: '{question}'."
+        )
+        response = (await agent_llm.ainvoke(answer_prompt)).content
     memory.save_context({"input": question}, {"output": response})
-    print("Follow-Up Response:", response)
+    print("Response:", response)
     return response
 
 async def main():
-    user_query = "What are the latest advancements in AI?"
-    result = await follow_up(user_query)
-    print("Final Answer:", result)
+    """Interactive loop for asking questions."""
+    print("Welcome to the AI Assistant! Type 'exit' to quit.")
+    while True:
+        user_query = input("Ask a question: ").strip()
+        if user_query.lower() == "exit":
+            print("Goodbye!")
+            break
+        result = await follow_up(user_query)
+        print("Final Answer:", result)
+        print("\n---\n")
 
 # Example usage
 if __name__ == "__main__":
