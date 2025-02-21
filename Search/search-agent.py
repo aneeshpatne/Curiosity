@@ -1,153 +1,112 @@
-import asyncio
-from langchain_openai import ChatOpenAI
-from langchain.agents import initialize_agent, AgentType
-from langchain.memory import ConversationBufferMemory
-from langchain.tools import Tool
 from duckduckgo_search import DDGS
-from playwright.async_api import async_playwright
+from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 from dotenv import load_dotenv
-from langchain.prompts import MessagesPlaceholder
-from langchain.schema import SystemMessage
 import os
+from playwright.async_api import async_playwright
+import asyncio
+from langchain.tools import Tool
+from langchain.agents import initialize_agent, AgentType
+from langchain.memory import ConversationBufferMemory
 
-# Load API keys from environment variables
+# Load environment variables
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
+openRouterKey = os.getenv("OPEN_ROUTER_KEY")
 
-# Set up different LLMs for conversation and summarization
-summary_llm = ChatOpenAI(model="o1-mini", api_key=SecretStr(api_key))
-agent_llm = ChatOpenAI(
-    model="gpt-4o-mini",
-    api_key=SecretStr(api_key),
-    temperature=0.7
-)
+# Initialize LLMs
+summary_llm = ChatOpenAI(model='o1-mini', api_key=SecretStr(api_key))
+agent_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
 
-# System prompt that enforces the correct output format
-SYSTEM_PROMPT = """You are a helpful AI assistant. For every response, you MUST use the following format:
+# Memory to track conversation history (Deprecated, but still functional for now)
+memory = ConversationBufferMemory(memory_key="chat_history")
 
-Thought: First, think about whether you need to search for information or can answer directly.
-Action: Choose one of:
-- "Direct Response" (for questions you can answer without searching)
-- "WebSearch" (only when you need current information)
-Action Input: Your response if direct, or the search query if searching.
-
-Example for direct response:
-Thought: This is a greeting, I can respond directly.
-Action: Direct Response
-Action Input: Hello! How can I help you today?
-
-Example for search needed:
-Thought: I need current information about this topic.
-Action: WebSearch
-Action Input: latest news about artificial intelligence developments
-
-Always maintain this exact format for EVERY response."""
-
-# Initialize memory for contextual follow-ups
-memory = ConversationBufferMemory(
-    memory_key="chat_history",
-    return_messages=True
-)
-
-# Initialize DuckDuckGo Search
+# DuckDuckGo Search
 ddgs = DDGS()
 
 async def scrape_page(context, url):
-    """Scrapes a webpage using Playwright."""
+    """Scrapes a single page using an existing browser instance."""
     page = await context.new_page()
     try:
-        await page.goto(url, wait_until="load")
+        await page.goto(url, wait_until='load')
         text_blocks = await page.locator("body p, body h1, body h2, body h3, body h4, body h5, body h6").all_text_contents()
         cleaned_text = "\n".join([t.strip() for t in text_blocks if t.strip()])
         important_text = cleaned_text[:10000]
-        return important_text if important_text else "No relevant text found."
+        return important_text if important_text else "No text found"
     except Exception as e:
         return f"Error scraping page: {str(e)}"
     finally:
         await page.close()
 
 async def searchAgent(topic):
-    """Performs a DuckDuckGo search, scrapes results, and summarizes."""
-    results = ddgs.text(topic, max_results=3)  # Reduced to 3 results to minimize token usage
-    links = [r["href"] for r in results]
-
-    print("🔍 Search Results Found. Scraping pages...")
-
+    """Searches for the topic, scrapes data, and summarizes it."""
+    result = ddgs.text(topic, max_results=10)
+    links = [r['href'] for r in result]
+    print("Search Results Generated")
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         tasks = [scrape_page(context, link) for link in links]
         scraped_contents = await asyncio.gather(*tasks)
+        ls = []
+        for index, content in enumerate(scraped_contents, start=1):
+            ls.append(f"[{index}] {content}")
+        print("Scraped Contents:")
+        summary = await summarize(ls, topic)
+        print("Summary:", summary)
         await browser.close()
+        return summary
 
-    formatted_sources = "\n\n".join([f"[{i+1}] {scraped_contents[i][:1000]}" for i in range(len(scraped_contents))])  # Limited to first 1000 chars per source
-    summary = summarize(formatted_sources, topic)
-    return summary
-
-def summarize(content, query):
-    """Summarizes the scraped search results using o1-mini."""
+async def summarize(content, query):
+    """Summarizes the gathered content."""
     prompt = (
-        f"Summarize the key information related to: '{query}'. Keep it brief and focused.\n\n"
-        f"{content}\n\n"
-        "Provide a concise summary with key points only."
+        f"The user has submitted the following query: '{query}'. Using the provided sources: {content}, "
+        "please craft a thorough, well-rounded, and detailed response that directly addresses the user's question with clarity and depth. "
+        "Ensure the response remains focused, preserving citation labels (e.g., [1], [2]) for accuracy. "
+        "Some sources may contain overlapping or redundant information; synthesize the data to avoid repetition. "
+        "If the sources lack sufficient data to fully address the query, conclude with: 'Insufficient relevant information found.' "
     )
-    response = summary_llm.invoke(prompt).content
+    response = await summary_llm.ainvoke(prompt)
+    return response.content
+
+# Define the search tool (fixed with func=None)
+search_tool = Tool(
+    name="WebSearch",
+    func=None,  # Explicitly set for async-only tool
+    coroutine=searchAgent,  # Async function
+    description="Use this tool when additional web search is needed to answer the user's question."
+)
+
+# Initialize an agent with function-calling ability
+agent = initialize_agent(
+    tools=[search_tool],
+    llm=agent_llm,
+    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    verbose=True
+)
+
+async def follow_up(question):
+    """Handles follow-up questions using conversation history or web search if needed."""
+    previous_conversations = memory.load_memory_variables({})
+    prompt = (
+        f"The user has asked a follow-up question: '{question}'.\n"
+        f"Here is the previous conversation for context: {previous_conversations}\n"
+        "First, determine whether you can answer this using existing information.\n"
+        "If more information is needed, call the WebSearch tool to retrieve data.\n"
+        "After you call the WebSearch tool display the answer as-is its a summarised version and you are not needed to do anything with it.\n"
+        "Otherwise, respond directly using the provided context."
+    )
+    response_dict = await agent.ainvoke({"input": prompt})  # Pass dict and await
+    response = response_dict["output"]  # Extract output
+    memory.save_context({"input": question}, {"output": response})
+    print("Follow-Up Response:", response)
     return response
 
-def web_search_sync(query):
-    """Sync wrapper for async searchAgent function."""
-    return asyncio.run(searchAgent(query))
+async def main():
+    user_query = "What are the latest advancements in AI?"
+    result = await follow_up(user_query)
+    print("Final Answer:", result)
 
-web_search = Tool(
-    name="WebSearch",
-    func=web_search_sync,
-    description="Use this tool ONLY when you need current information, news, or specific facts that you're not confident about. For general knowledge questions or logical reasoning, respond directly without using this tool."
-)
-
-# Initialize LangChain Agent with the correct system message setup
-agent = initialize_agent(
-    tools=[web_search],
-    llm=agent_llm,
-    agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-    memory=memory,
-    verbose=True,
-    handle_parsing_errors=True,
-    max_iterations=2,  # Reduced max iterations
-    early_stopping_method="generate",
-    agent_kwargs={
-        "system_message": SystemMessage(content=SYSTEM_PROMPT),
-        "extra_prompt_messages": [MessagesPlaceholder(variable_name="chat_history")]
-    }
-)
-
-def handle_chat(question):
-    """Handles user input with improved error handling and response formatting."""
-    try:
-        response = agent.invoke({"input": question})["output"]
-        memory.save_context({"input": question}, {"output": response})
-        print(f"\n🤖 ChatBot: {response}\n")
-        return response
-    except Exception as e:
-        error_response = (
-            "Thought: There was an error, but I can respond directly.\n"
-            "Action: Direct Response\n"
-            f"Action Input: I apologize for the error. How can I help you today?"
-        )
-        memory.save_context({"input": question}, {"output": error_response})
-        print(f"\n🤖 ChatBot: {error_response}\n")
-        return error_response
-
-def chat_loop():
-    """Runs a continuous chat in the terminal, allowing follow-ups."""
-    print("💬 ChatBot is ready! Type 'exit' to quit.\n")
-
-    while True:
-        user_input = input("🟢 You: ")
-        if user_input.lower() in ["exit", "quit"]:
-            print("👋 Goodbye!")
-            break
-        handle_chat(user_input)
-
+# Example usage
 if __name__ == "__main__":
-    chat_loop()
+    asyncio.run(main())
