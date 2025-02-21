@@ -9,7 +9,7 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 api_key_groq = os.getenv("GROQ_KEY")
 ddgs = DDGS()
-llm=ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
+llm=ChatOpenAI(model='o1-mini', api_key=SecretStr(api_key))
 groqLLM = ChatOpenAI(model='deepseek-r1-distill-llama-70b', api_key=SecretStr(api_key_groq), temperature=0.0, base_url="https://api.groq.com/openai/v1")
 
 async def scrape_page(context, url):
@@ -19,7 +19,7 @@ async def scrape_page(context, url):
         await page.goto(url, wait_until='load')
         text_blocks = await page.locator("body p, body h1, body h2, body h3, body h4, body h5, body h6").all_text_contents()
         cleaned_text = "\n".join([t.strip() for t in text_blocks if t.strip()])
-        important_text = cleaned_text[:5000]
+        important_text = cleaned_text[:10000]
         return important_text if important_text else "No text found"
     except Exception as e:
         return f"Error scraping page: {str(e)}"
@@ -27,7 +27,7 @@ async def scrape_page(context, url):
         await page.close()
 
 async def searchAgent(topic):
-    result = ddgs.text(topic, max_results=4)
+    result = ddgs.text(topic, max_results=25)
     links = [r['href'] for r in result]
     print("Search Results Generated")
     async with async_playwright() as p:
@@ -53,6 +53,7 @@ def summarize(content, query):
         "you can also include your own knowledge and expertise to provide a complete and well-rounded answer. "
         "Keep a formal and professional tone throughout the response. "
         "Only cite the sources in the format [] [] separately. "
+        "Dont mention the source at the end of your response. "
         "If the sources lack sufficient data to fully address the query, conclude with: 'Insufficient relevant information found,' and briefly explain why the available information falls short of providing a complete answer."
     )
     response = llm.invoke(prompt)
@@ -60,7 +61,7 @@ def summarize(content, query):
 
 
 if __name__ == "__main__":
-    topic = "Eknath Shinde Fadnavis Rift"
+    topic = "Devendra Fandavis and Eknath Shinde Feud"
     topic += "ENGLISH ONLY"
     asyncio.run(searchAgent(topic))
 
