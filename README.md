@@ -1,4 +1,4 @@
-# Search Agent Project
+# Curiosity: Search Agent Project
 
 This project implements multiple search and scraping functionalities using several LLMs (e.g., GPT variants, Gemini) and tools such as DuckDuckGo, Playwright, and LangChain. The agents can perform web searches, scrape page content, and generate detailed summaries with follow-up questions.
 
