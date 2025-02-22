@@ -1,5 +1,6 @@
 from duckduckgo_search import DDGS
 from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import SecretStr
 from dotenv import load_dotenv
 import os
@@ -11,7 +12,6 @@ from pydantic import BaseModel, Field
 from langchain_core.output_parsers import StrOutputParser
 from langchain.output_parsers import PydanticOutputParser
 from langchain.output_parsers.retry import RetryWithErrorOutputParser
-from langchain.schema import OutputParserException
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 
@@ -21,11 +21,13 @@ from langchain.chains import LLMChain
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 openRouterKey = os.getenv("OPEN_ROUTER_KEY")
-
+geminiKey = os.getenv("GEMINI_API_KEY")
 # Initialize LLMs
-summary_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='google/gemini-2.0-flash-001', api_key=SecretStr(openRouterKey))
+#summary_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='google/gemini-2.0-flash-001', api_key=SecretStr(openRouterKey))
 agent_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
+summary_llm = ChatGoogleGenerativeAI(model='gemini-2.0-pro-exp-02-05', api_key=SecretStr(geminiKey))
 # summary_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
+#gemini-2.0-pro-exp-02-05
 class SummaryFormat(BaseModel):
     content: str = Field(description="The summarized content.")
     moreQtn: list[str] = Field(description="List of 5 follow-up questions based on the content.")
@@ -144,7 +146,7 @@ async def main():
             break
         result = await follow_up(user_query)
         print("Final Answer:", result.content)
-        print("Follow up Questions:", result.moreQtn)
+        print("Follow up Questions:", getattr(result, "moreQtn", "Not available"))
         print("\n---\n")
 
 # Example usage
