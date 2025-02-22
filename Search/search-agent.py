@@ -25,10 +25,10 @@ openRouterKey = os.getenv("OPEN_ROUTER_KEY")
 # Initialize LLMs
 summary_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='google/gemini-2.0-flash-001', api_key=SecretStr(openRouterKey))
 agent_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
-
+# summary_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
 class SummaryFormat(BaseModel):
     content: str = Field(description="The summarized content.")
-    moreQtn: list[str] = Field(description="List of 5 follow-up questions based on the content.", min_items=5, max_items=5)
+    moreQtn: list[str] = Field(description="List of 5 follow-up questions based on the content.")
 parser = PydanticOutputParser(pydantic_object=SummaryFormat)
 
 
@@ -45,7 +45,7 @@ async def scrape_page(context, url):
         await page.goto(url, wait_until='load')
         text_blocks = await page.locator("body p, body h1, body h2, body h3, body h4, body h5, body h6").all_text_contents()
         cleaned_text = "\n".join([t.strip() for t in text_blocks if t.strip()])
-        important_text = cleaned_text[:3000]
+        important_text = cleaned_text[:10000]
         return important_text if important_text else "No text found"
     except Exception as e:
         return f"Error scraping page: {str(e)}"
@@ -54,7 +54,7 @@ async def scrape_page(context, url):
 
 async def searchAgent(topic):
     """Searches for the topic, scrapes data, and summarizes it."""
-    result = ddgs.text(topic, max_results=3)
+    result = ddgs.text(topic, max_results=20)
     links = [r['href'] for r in result]
     print("Search Results Generated")
     async with async_playwright() as p:
@@ -82,7 +82,9 @@ async def summarize(content: str, query: str):
             "If the sources lack sufficient data to fully address the query, conclude with: 'Insufficient relevant information found.'\n\n"
             "Additionally, generate exactly 5 follow-up questions that the user might ask next, based on the summarized information. "
             "Return the questions as a list.\n\n"
-            "### Response Format (Must be valid JSON)\n"
+            "### Response Format (Must be valid JSON)\n with the following format:\n"
+            "content: \"The summarized content.\"\n"
+            "moreQtn: [\"Question 1\", \"Question 2\", \"Question 3\", \"Question 4\", \"Question 5\"]\n"
             "{format_instructions}"
         ),
         input_variables=["query", "content"],
@@ -95,12 +97,16 @@ async def summarize(content: str, query: str):
         max_retries=3
     )
     inputs = {"query": query, "content": content}
-    response = await base_chain.ainvoke(inputs)
-    structured_output = retry_parser.parse_with_prompt(completion=response, prompt_value=prompt)
+    try:
+        response = await base_chain.ainvoke(inputs)
+        structured_output = retry_parser.parse_with_prompt(completion=response, prompt_value=prompt)
+    except Exception as e:
+        print(f"Error parsing structured output: {str(e)}")
+        structured_output = SummaryFormat(content="Error parsing structured output.", moreQtn=[])
     return structured_output
 
     
-async def follow_up(question):
+async def follow_up(question: str):
     """Handles questions using conversation history or web search."""
     previous_conversations = memory.load_memory_variables({})
     decision_prompt = (
@@ -112,16 +118,21 @@ async def follow_up(question):
     decision = (await agent_llm.ainvoke(decision_prompt)).content.strip().lower()
     if "yes" in decision:
         print("Using WebSearch to get the answer...")
-        response = await searchAgent(question)
+        response = await searchAgent(question)  
+        response_str = (
+            f"Summary: {response.content}"
+        )
     else:
+        print("Answering using existing context...")
         answer_prompt = (
             f"Based on the conversation history: {previous_conversations}\n"
             f"answer the question: '{question}'."
         )
-        response = (await agent_llm.ainvoke(answer_prompt)).content
-    memory.save_context({"input": question}, {"output": response})
-    print("Response:", response)
-    return response
+        response = await agent_llm.ainvoke(answer_prompt)
+        response_str = response.content  
+
+    memory.save_context({"input": question}, {"output": response_str})
+    return response 
 
 async def main():
     """Interactive loop for asking questions."""
@@ -132,7 +143,8 @@ async def main():
             print("Goodbye!")
             break
         result = await follow_up(user_query)
-        print("Final Answer:", result)
+        print("Final Answer:", result.content)
+        print("Follow up Questions:", result.moreQtn)
         print("\n---\n")
 
 # Example usage
