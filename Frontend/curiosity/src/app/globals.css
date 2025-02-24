@@ -114,3 +114,53 @@
     @apply bg-background text-foreground;
   }
 }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Scoped styles for markdown content */
+.markdown-content h1 {
+  @apply text-4xl font-bold text-gray-100 mb-6; /* White-ish, no border for now */
+  position: relative; /* For the custom underline */
+}
+
+.markdown-content h1:after {
+  @apply bg-gray-400; /* Subtle gray underline */
+  content: "";
+  position: absolute;
+  width: 25%; /* Adjust this to control length (e.g., 50%, 75%) */
+  height: 2px; /* Matches border-b-2 thickness */
+  left: 0;
+  bottom: -0.5rem; /* Space below text */
+}
+
+.markdown-content h2 {
+  @apply text-2xl font-semibold text-white mt-6 mb-4; /* Light gray */
+}
+
+.markdown-content h3 {
+  @apply text-xl font-medium text-white mt-5 mb-3; /* Mid gray */
+}
+
+.markdown-content h4 {
+  @apply text-xl font-normal text-white italic mt-4 mb-2; /* Muted gray */
+}
+
+.markdown-content ul {
+  @apply list-none pl-0; /* Reset list styling */
+}
+
+.markdown-content li {
+  @apply text-white pl-8 relative;
+}
+
+.markdown-content li:before {
+  @apply absolute text-white text-base;
+  content: "•";
+  left: 0.75rem; /* Removed quotes, correct CSS syntax */
+  top: 0.25rem; /* Removed quotes, correct CSS syntax */
+}

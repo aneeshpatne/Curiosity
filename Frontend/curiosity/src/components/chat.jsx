@@ -4,7 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import io from "socket.io-client";
 import { v4 as uuidv4 } from "uuid";
-
+import ReactMarkdown from "react-markdown";
+import parse from "html-react-parser";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 const socket = io("http://localhost:4000");
 
 const Chat = () => {
@@ -27,11 +30,20 @@ const Chat = () => {
 
     // Listen for "message" events
     socket.on("message", (data) => {
-      // data: { id, text }
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id === data.id && msg.type === "received") {
-            return { ...msg, text: data.text };
+            return { ...msg, text: data.text, status: data.status };
+          }
+          return msg;
+        })
+      );
+    });
+    socket.on("status", (data) => {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id === data.id && msg.type === "received") {
+            return { ...msg, status: data.status };
           }
           return msg;
         })
@@ -47,15 +59,12 @@ const Chat = () => {
   const sendMessage = () => {
     if (message.trim() === "") return;
     const id = uuidv4();
-
-    // Add both the sent message and a placeholder received message
     setMessages((prev) => [
       ...prev,
       { id, text: message, type: "sent" },
-      { id, text: "Waiting for response...", type: "received", sources: [] },
+      { id, text: "", type: "received", sources: [], status: "pending" },
     ]);
 
-    // Emit the message with its unique ID to the backend
     socket.emit("message", { id, text: message });
     setMessage("");
   };
@@ -71,6 +80,7 @@ const Chat = () => {
               key={`${msg.id}-received`}
               message={msg.text}
               sources={msg.sources}
+              status={msg.status}
             />
           )
         )}
@@ -99,26 +109,94 @@ const SentMessage = ({ message }) => {
   );
 };
 
-const ReceivedMessage = ({ message, sources }) => {
+const Citation = ({ number }) => {
   return (
-    <div className="flex flex-col gap-2 self-start p-2 m-2 border-t border-input min-w-[90%] break-words">
+    <a
+      href={`#source-${number}`} // Link to source section
+      className="relative group text-gray-400 hover:text-gray-300 transition-all"
+    >
+      <sup className="px-0.5 py-0.10 bg-gray-700 text-gray-300 rounded-sm text-xs group-hover:bg-gray-600 group-hover:text-white shadow-sm">
+        {number}
+      </sup>
+    </a>
+  );
+};
+
+const MarkdownRenderer = ({ content }) => {
+  // Convert markdown to sanitized HTML first
+  let rawHtml = DOMPurify.sanitize(marked(content));
+
+  // Replace citations ([1], [2]) with a unique marker
+  rawHtml = rawHtml.replace(
+    /\[(\d+)\]/g,
+    `<span class="citation" data-cite="$1">[$1]</span>`
+  );
+
+  // Function to transform <span class="citation"> into <Citation /> component
+  const transform = (node) => {
+    if (
+      node.type === "tag" &&
+      node.name === "span" &&
+      node.attribs?.class === "citation"
+    ) {
+      return <Citation number={node.attribs["data-cite"]} />;
+    }
+    return undefined; // Default processing
+  };
+
+  return <div>{parse(rawHtml, { replace: transform })}</div>;
+};
+
+const ReceivedMessage = ({ message, sources, status }) => {
+  const [statusText, setStatusText] = useState(status);
+
+  useEffect(() => {
+    setStatusText(status);
+  }, [status]);
+
+  return (
+    <div className="flex flex-col gap-2 self-start p-2 m-2 border-t border-input w-[90%] break-words">
+      {statusText !== "finished" && (
+        <div className="font-light italic">{statusText}...</div>
+      )}
+
       <div>
-        {sources && sources.length > 0 ? (
+        {sources && sources.length > 0 && (
           <h1 className="m-1 font-bold">Sources</h1>
-        ) : null}
+        )}
         <div className="flex flex-wrap gap-2">
-          {sources && sources.length > 0
-            ? sources.map((url, index) => <Sources key={index} url={url} />)
-            : null}
+          {sources?.map((url, index) => (
+            <Sources key={index} url={url} />
+          ))}
         </div>
-        <div className="break-words p-2 font-medium">{message}</div>
+
+        <div className="break-words p-2 font-medium markdown-content">
+          {/* Pass raw markdown to MarkdownRenderer */}
+          <MarkdownRenderer content={message} />
+        </div>
       </div>
     </div>
   );
 };
 
+const getDomainName = (url) => {
+  try {
+    const parsedUrl = new URL(url);
+    const hostnameParts = parsedUrl.hostname.split(".");
+
+    // Handle cases like "www.example.com" and "example.com"
+    if (hostnameParts.length > 2) {
+      return hostnameParts[hostnameParts.length - 2]; // Extract second-last part (e.g., "example")
+    }
+    return hostnameParts[0]; // Fallback for cases like "example.com"
+  } catch (error) {
+    console.error("Invalid URL:", url);
+    return url; // Fallback: return the full URL if parsing fails
+  }
+};
+
 const Sources = ({ url }) => {
-  const parsedUrl = url.replace(/^https?:\/\/www\./, "").split(".")[0];
+  const parsedUrl = getDomainName(url);
   const parsedUrlForFavicon = url
     .replace(/^https?:\/\/(www\.)?/, "")
     .split("/")[0];
