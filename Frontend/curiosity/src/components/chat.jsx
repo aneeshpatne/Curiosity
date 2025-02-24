@@ -2,9 +2,17 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 import io from "socket.io-client";
 import { v4 as uuidv4 } from "uuid";
-import ReactMarkdown from "react-markdown";
+import { Bot } from "lucide-react";
 import parse from "html-react-parser";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
@@ -13,51 +21,53 @@ const socket = io("http://localhost:4000");
 const Chat = () => {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
+  const [searchType, setSearchType] = useState("normal");
 
-  // Listen for "sources" events
+  // Handle receiving sources
   useEffect(() => {
     socket.on("sources", (data) => {
-      // data: { id, sources }
       setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.id === data.id && msg.type === "received") {
-            return { ...msg, sources: data.sources };
-          }
-          return msg;
-        })
+        prev.map((msg) =>
+          msg.id === data.id && msg.type === "received"
+            ? { ...msg, sources: data.sources }
+            : msg
+        )
       );
     });
 
-    // Listen for "message" events
+    // Handle receiving messages
     socket.on("message", (data) => {
       setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.id === data.id && msg.type === "received") {
-            return { ...msg, text: data.text, status: data.status };
-          }
-          return msg;
-        })
+        prev.map((msg) =>
+          msg.id === data.id && msg.type === "received"
+            ? { ...msg, text: data.text, status: data.status }
+            : msg
+        )
       );
     });
+
+    // Handle status updates
     socket.on("status", (data) => {
       setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.id === data.id && msg.type === "received") {
-            return { ...msg, status: data.status };
-          }
-          return msg;
-        })
+        prev.map((msg) =>
+          msg.id === data.id && msg.type === "received"
+            ? { ...msg, status: data.status }
+            : msg
+        )
       );
     });
 
     return () => {
       socket.off("sources");
       socket.off("message");
+      socket.off("status");
     };
   }, []);
 
+  // Function to send messages
   const sendMessage = () => {
-    if (message.trim() === "") return;
+    if (!message.trim()) return;
+
     const id = uuidv4();
     setMessages((prev) => [
       ...prev,
@@ -66,41 +76,69 @@ const Chat = () => {
     ]);
 
     socket.emit("message", { id, text: message });
-    setMessage("");
+    setMessage(""); // Clear input after sending
+  };
+
+  // Handle send event (enter key or button click)
+  const handleSend = () => {
+    sendMessage();
   };
 
   return (
     <>
-      <div className="w-full flex flex-col gap-5 mb-24">
-        {messages.map((msg) =>
-          msg.type === "sent" ? (
-            <SentMessage key={`${msg.id}-sent`} message={msg.text} />
-          ) : (
-            <ReceivedMessage
-              key={`${msg.id}-received`}
-              message={msg.text}
-              sources={msg.sources}
-              status={msg.status}
-            />
-          )
-        )}
-      </div>
+      {messages.length === 0 ? (
+        <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
+          <Bot className="w-12 h-12 text-primary animate-pulse" />
+          <h1 className="text-4xl font-semibold text-center">
+            Hi, how can Curiosity help you?
+          </h1>
+        </div>
+      ) : (
+        <div className="w-full flex flex-col gap-5 mb-24">
+          {messages.map((msg) =>
+            msg.type === "sent" ? (
+              <SentMessage key={`${msg.id}-sent`} message={msg.text} />
+            ) : (
+              <ReceivedMessage
+                key={`${msg.id}-received`}
+                message={msg.text}
+                sources={msg.sources}
+                status={msg.status}
+              />
+            )
+          )}
+        </div>
+      )}
+
+      {/* Chat Input */}
       <div className="fixed bottom-0 w-full text-white p-4 flex space-x-3 border-t border-input bg-background">
+        <Select value={searchType} onValueChange={setSearchType}>
+          <SelectTrigger className="w-[180px]">
+            {" "}
+            {/* Increased width */}
+            <SelectValue placeholder="Search Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="normal">Normal Search</SelectItem>
+            <SelectItem value="pro">Pro Search</SelectItem>
+          </SelectContent>
+        </Select>
+
         <Input
           type="text"
-          placeholder="How can Curiosity help you today?"
+          placeholder="Ask Curiosity Anything..."
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          className="flex-grow" // Make input take remaining space
         />
-        <Button type="submit" onClick={sendMessage}>
+        <Button type="submit" onClick={handleSend}>
           Send
         </Button>
       </div>
     </>
   );
 };
-
 const SentMessage = ({ message }) => {
   return (
     <div className="self-end p-2 m-2 border border-input max-w-sm break-words">
@@ -162,7 +200,9 @@ const ReceivedMessage = ({ message, sources, status }) => {
 
       <div>
         {sources && sources.length > 0 && (
-          <h1 className="m-1 font-bold">Sources</h1>
+          <p className="m-1 text-lg font-light tracking-wide text-primary">
+            Sources:
+          </p>
         )}
         <div className="flex flex-wrap gap-2">
           {sources?.map((url, index) => (
@@ -171,7 +211,6 @@ const ReceivedMessage = ({ message, sources, status }) => {
         </div>
 
         <div className="break-words p-2 font-medium markdown-content">
-          {/* Pass raw markdown to MarkdownRenderer */}
           <MarkdownRenderer content={message} />
         </div>
       </div>
