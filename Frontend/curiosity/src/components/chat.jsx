@@ -16,6 +16,9 @@ import { Bot } from "lucide-react";
 import parse from "html-react-parser";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
+import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
+
 const socket = io("http://localhost:4000");
 
 const Chat = () => {
@@ -27,11 +30,15 @@ const Chat = () => {
   useEffect(() => {
     socket.on("sources", (data) => {
       setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === data.id && msg.type === "received"
-            ? { ...msg, sources: data.sources }
-            : msg
-        )
+        prev.map((msg) => {
+          if (msg.id === data.id && msg.type === "received") {
+            return {
+              ...msg,
+              sources: [...(msg.sources || []), ...data.sources],
+            };
+          }
+          return msg;
+        })
       );
     });
 
@@ -40,7 +47,12 @@ const Chat = () => {
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === data.id && msg.type === "received"
-            ? { ...msg, text: data.text, status: data.status }
+            ? {
+                ...msg,
+                text: data.text,
+                status: data.status,
+                moreQtn: data.moreQtn,
+              }
             : msg
         )
       );
@@ -72,10 +84,17 @@ const Chat = () => {
     setMessages((prev) => [
       ...prev,
       { id, text: message, type: "sent" },
-      { id, text: "", type: "received", sources: [], status: "pending" },
+      {
+        id,
+        text: "",
+        type: "received",
+        sources: [],
+        status: "pending",
+        moreQtn: [],
+      },
     ]);
 
-    socket.emit("message", { id, text: message });
+    socket.emit("message", { id, text: message, searchType });
     setMessage(""); // Clear input after sending
   };
 
@@ -104,6 +123,7 @@ const Chat = () => {
                 message={msg.text}
                 sources={msg.sources}
                 status={msg.status}
+                moreQtn={msg.moreQtn}
               />
             )
           )}
@@ -121,6 +141,7 @@ const Chat = () => {
           <SelectContent>
             <SelectItem value="normal">Normal Search</SelectItem>
             <SelectItem value="pro">Pro Search</SelectItem>
+            <SelectItem value="deep">Deep Search</SelectItem>
           </SelectContent>
         </Select>
 
@@ -185,7 +206,7 @@ const MarkdownRenderer = ({ content }) => {
   return <div>{parse(rawHtml, { replace: transform })}</div>;
 };
 
-const ReceivedMessage = ({ message, sources, status }) => {
+const ReceivedMessage = ({ message, sources, status, moreQtn }) => {
   const [statusText, setStatusText] = useState(status);
 
   useEffect(() => {
@@ -195,13 +216,16 @@ const ReceivedMessage = ({ message, sources, status }) => {
   return (
     <div className="flex flex-col gap-2 self-start p-2 m-2 border-t border-input w-[90%] break-words">
       {statusText !== "finished" && (
-        <div className="font-light italic">{statusText}...</div>
+        <div className="flex items-center gap-2">
+          <img src="/assets/loading.svg" className="w-5 h-5" />
+          <div className="font-light italic">{statusText}...</div>
+        </div>
       )}
 
       <div>
         {sources && sources.length > 0 && (
           <p className="m-1 text-lg font-light tracking-wide text-primary">
-            Sources:
+            Sources: {sources.length}
           </p>
         )}
         <div className="flex flex-wrap gap-2">
@@ -210,11 +234,33 @@ const ReceivedMessage = ({ message, sources, status }) => {
           ))}
         </div>
 
-        <div className="break-words p-2 font-medium markdown-content">
-          <MarkdownRenderer content={message} />
+        {message.length === 0 ? (
+          <SkeletonTheme baseColor="#444" highlightColor="#777">
+            <Skeleton count={5} width="100%" height={15} />
+          </SkeletonTheme>
+        ) : (
+          <div className="break-words p-2 font-medium markdown-content">
+            <MarkdownRenderer content={message} />
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 mt-4">
+          {moreQtn && moreQtn.length > 0 ? (
+            <p className="font-semibold text-lg">Still Curious? Learn More:</p>
+          ) : null}
+          {moreQtn && moreQtn.length > 0
+            ? moreQtn.map((qtn, index) => <FollowUp key={index} qtn={qtn} />)
+            : null}
         </div>
       </div>
     </div>
+  );
+};
+const FollowUp = ({ qtn }) => {
+  return (
+    <p className="text-white font-medium mt-1 border-b border-gray-700 pb-1">
+      {qtn}
+    </p>
   );
 };
 
