@@ -233,17 +233,17 @@ const ReceivedMessage = ({ message, sources, status, moreQtn }) => {
             <Sources key={index} url={url} />
           ))}
         </div>
-
-        {message.length === 0 ? (
-          <SkeletonTheme baseColor="#444" highlightColor="#777">
-            <Skeleton count={5} width="100%" height={15} />
-          </SkeletonTheme>
-        ) : (
-          <div className="break-words p-2 font-medium markdown-content">
-            <MarkdownRenderer content={message} />
-          </div>
-        )}
-
+        <div className="mt-2">
+          {message.length === 0 ? (
+            <SkeletonTheme baseColor="#444" highlightColor="#777">
+              <Skeleton count={5} width="100%" height={15} />
+            </SkeletonTheme>
+          ) : (
+            <div className="break-words p-2 font-medium markdown-content">
+              <MarkdownRenderer content={message} />
+            </div>
+          )}
+        </div>
         <div className="flex flex-col gap-3 mt-4">
           {moreQtn && moreQtn.length > 0 ? (
             <p className="font-semibold text-lg">Still Curious? Learn More:</p>

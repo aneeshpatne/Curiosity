@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Roboto, Inter, Montserrat } from "next/font/google";
+import { icons } from "lucide-react";
 const roboto = Roboto({
   weight: "400",
   subsets: ["latin"],
@@ -22,6 +23,9 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "Curiosity",
   description: "Curiosity is a chatbot that helps you learn new things.",
+  icons: {
+    icon: "/assets/bot.png",
+  },
 };
 
 export default function RootLayout({ children }) {

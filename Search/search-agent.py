@@ -12,6 +12,8 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.output_parsers import PydanticOutputParser
 from langchain.output_parsers.retry import RetryWithErrorOutputParser
 from langchain.memory import ConversationBufferMemory
+from datetime import datetime
+
 global_deep_summaries = []  
 # ---------------------------------
 # Load Environment Variables
@@ -25,10 +27,10 @@ geminiKey = os.getenv("GEMINI_API_KEY")
 # Initialize LLMs
 # ---------------------------------
 # Uncomment below to use a different LLM if needed
-#deep_search_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='openai/o3-mini-high', api_key=SecretStr(openRouterKey))
+#summary_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='google/gemini-2.0-flash-lite-001', api_key=SecretStr(openRouterKey))
 agent_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
 #deep_search_llm = ChatGoogleGenerativeAI(model='gemini-2.0-flash-thinking-exp-01-21', api_key=SecretStr(geminiKey))
-summary_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
+summary_llm = ChatOpenAI(model='o1-mini', api_key=SecretStr(api_key))
 deep_search_llm = ChatOpenAI(model='o1-mini', api_key=SecretStr(api_key))
 # ---------------------------------
 # Global Variables and Settings
@@ -122,6 +124,7 @@ async def summarize(content: str, query: str) -> SummaryFormat:
     prompt = PromptTemplate(
         template=(
             "The user has submitted the following query: '{query}'. Using the provided sources: {content}, "
+            f"Today is {datetime.now().strftime('%Y-%m-%d')}"
             "please craft a thorough, well-rounded, and detailed response that directly addresses the user's question with clarity and depth. "
             "You will output the summary in markdown format.\n\n"
             "### Instructions\n"
@@ -260,7 +263,7 @@ async def scrape_contents_for_deep(topic: str, links: list) -> str:
     return combined
 
 
-async def deep_search(query: str, depth: int = 3, sid=None, msg_id=None, 
+async def deep_search(query: str, depth: int = 4, sid=None, msg_id=None, 
                       emit_status=None, emit_sources=None, links: list = None) -> dict:
     """
     Recursively performs a deep search for the given query with frequent status updates.
@@ -304,7 +307,7 @@ async def deep_search(query: str, depth: int = 3, sid=None, msg_id=None,
     
     # Recurse if more depth is required.
     if depth > 1:
-        for follow_q in summary_obj.moreQtn[:1]:
+        for follow_q in summary_obj.moreQtn[:2]:
             if emit_status and sid and msg_id:
                 await emit_status(sid, msg_id, f"Recursing for follow-up question: '{follow_q}'")
             result["follow_up"][follow_q] = await deep_search(
@@ -342,7 +345,7 @@ async def generate_final_summary() -> SummaryFormat:
         print("[INFO] Saved combined query summaries to combined_sources.txt")
     except Exception as e:
         print(f"[ERROR] Failed to save combined sources: {e}")
-    
+    # print(combined_content)
     prompt = PromptTemplate(
         template=(
             "Below is a compilation of query summaries:\n\n"
@@ -384,8 +387,8 @@ async def generate_final_summary() -> SummaryFormat:
         formatted_prompt_text = prompt.format(**inputs)
         response = await base_chain.ainvoke(inputs)
 
-        print("[DEBUG] Raw response from LLM:")
-        print(response if response.strip() else "Empty response")
+        # print("[DEBUG] Raw response from LLM:")
+        # print(response if response.strip() else "Empty response")
         final_summary_obj = retry_parser.parse_with_prompt(
             completion=response,
             prompt_value=formatted_prompt_text
@@ -476,7 +479,7 @@ async def follow_up(
         # Retrieve and emit sources for this level
         links = await get_links(question, max_results=2)
         # Call deep_search with provided links to avoid duplicate search, ensuring nested calls emit their sources as well.
-        _ = await deep_search(question, depth=3, sid=sid, msg_id=msg_id, emit_status=emit_status, emit_sources=emit_sources, links=links)
+        _ = await deep_search(question, depth=4, sid=sid, msg_id=msg_id, emit_status=emit_status, emit_sources=emit_sources, links=links)
         final_summary_obj = await generate_final_summary()
         return final_summary_obj
 
