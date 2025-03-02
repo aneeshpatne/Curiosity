@@ -13,6 +13,9 @@ from langchain.output_parsers.retry import RetryWithErrorOutputParser
 from langchain.memory import ConversationBufferMemory
 from datetime import datetime
 import markdown
+import webbrowser
+import tempfile
+
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 openRouterKey = os.getenv("OPEN_ROUTER_KEY")
@@ -309,6 +312,10 @@ async def main():
     _ = await deep_search(links, depth=1,links=links)
     final_summary_obj = await generate_final_summary()
     html_content = markdown.markdown(final_summary_obj.content)
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".html") as f:
+        f.write(html_content)
+        temp_file_path = f.name 
+    webbrowser.open(f"file://{temp_file_path}")
     print(final_summary_obj)
     return final_summary_obj
 if __name__ == "__main__":
