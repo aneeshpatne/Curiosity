@@ -27,7 +27,8 @@ geminiKey = os.getenv("GEMINI_API_KEY")
 # ---------------------------------
 # Initialize LLMs
 # ---------------------------------
-# Uncomment below to use a different LLM if needed
+
+
 #summary_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='meta-llama/llama-3.3-70b-instruct:nitro', api_key=SecretStr(openRouterKey))
 agent_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
 #deep_search_llm = ChatGoogleGenerativeAI(model='gemini-2.0-flash-thinking-exp-01-21', api_key=SecretStr(geminiKey))
