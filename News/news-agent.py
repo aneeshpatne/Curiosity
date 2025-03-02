@@ -97,8 +97,7 @@ async def scrape_contents(topic: str, links: list) -> str:
         context = await browser.new_context(user_agent=random.choice(USER_AGENTS))
         tasks = [scrape_page(context, link) for link in links]
         scraped_contents = await asyncio.gather(*tasks)
-        source_lines = [f"[{i+1}] {content}" for i, content in enumerate(scraped_contents)]
-        combined = "\n".join(source_lines)
+        combined = "\n".join(scraped_contents)
         await browser.close()
     print(f"[INFO] Completed scraping for query: '{topic}'")
     return combined
@@ -106,7 +105,7 @@ async def scrape_contents(topic: str, links: list) -> str:
 async def summarize(content: str, query: str) -> SummaryFormat:
     """
     Summarizes the provided content using the given query.
-    Generates a markdown-formatted summary with exactly 5 follow-up questions.
+    Generates a markdown-formatted summary with exactly 20 follow-up questions.
     Returns a SummaryFormat object.
     """
     print(f"[INFO] Summarizing content for query: '{query}'")
@@ -171,8 +170,7 @@ async def summarize(content: str, query: str) -> SummaryFormat:
     return structured_output
 
 
-async def deep_search(query: str, depth: int = 2, sid=None, msg_id=None, 
-                      emit_status=None, emit_sources=None, links: list = None) -> dict:
+async def deep_search(query: str, depth: int = 2, links: list = None) -> dict:
     """
     Recursively performs a deep search for the given query with frequent status updates.
     If 'links' is provided, it is used instead of fetching links again.
@@ -183,24 +181,11 @@ async def deep_search(query: str, depth: int = 2, sid=None, msg_id=None,
     """
     # Fetch links if not provided.
     if links is None:
-        if emit_status and sid and msg_id:
-            await emit_status(sid, msg_id, f"Searching links for query: '{query}'")
+        print("Fetching links for query: ", query)
         links = await get_links(query, max_results=5)
-    
-    # Emit the source URLs for this level.
-    if emit_sources and sid and msg_id:
-        await emit_sources(sid, msg_id, links)
-    
-    if emit_status and sid and msg_id:
-        await emit_status(sid, msg_id, f"Scraping content for query: '{query}'")
-    # Use our dedicated function to scrape and number each URL's content.
     scraped_text = await scrape_contents(query, links)
-    
-    if emit_status and sid and msg_id:
-        await emit_status(sid, msg_id, f"Summarizing content for query: '{query}'")
     print("Sending to summarizer, ", scraped_text)
     summary_obj = await summarize(scraped_text, query)
-    
     # Save the query and its summary (without extra numbering) to our global deep summaries.
     global_deep_summaries.append({
         "query": query,
@@ -216,19 +201,12 @@ async def deep_search(query: str, depth: int = 2, sid=None, msg_id=None,
     # Recurse if more depth is required.
     if depth > 1:
         for follow_q in summary_obj.moreQtn:
-            if emit_status and sid and msg_id:
-                await emit_status(sid, msg_id, f"Recursing for follow-up question: '{follow_q}'")
+            print(f"Deep searching follow-up query: '{follow_q}'")
             result["follow_up"][follow_q] = await deep_search(
                 follow_q,
                 depth=depth - 1,
-                sid=sid,
-                msg_id=msg_id,
-                emit_status=emit_status,
-                emit_sources=emit_sources
             )
-    
-    if emit_status and sid and msg_id:
-        await emit_status(sid, msg_id, f"Completed deep search for query: '{query}'")
+    print(f"Deep search completed for query: '{query}'")
     return result
 
 async def generate_final_summary() -> SummaryFormat:
@@ -323,3 +301,13 @@ async def generate_final_summary() -> SummaryFormat:
         moreQtn=[]
     )
     return final_summary_obj
+
+async def main():
+    query = "Latest Global News"
+    links = await get_links(query, max_results=2)
+    _ = await deep_search(links, depth=1,links=links)
+    final_summary_obj = await generate_final_summary()
+    print(final_summary_obj)
+    return final_summary_obj
+if __name__ == "__main__":
+    asyncio.run(main())
