@@ -170,3 +170,157 @@ async def summarize(content: str, query: str) -> SummaryFormat:
         )
         print(f"[ERROR] Summarization failed for query: '{query}'")
     return structured_output
+
+
+async def deep_search(query: str, depth: int = 2, sid=None, msg_id=None, 
+                      emit_status=None, emit_sources=None, links: list = None) -> dict:
+    """
+    Recursively performs a deep search for the given query with frequent status updates.
+    If 'links' is provided, it is used instead of fetching links again.
+    Emits source links (URLs) as soon as they are retrieved at every level.
+    For each query, it scrapes via scrape_contents_for_deep and then summarizes the results.
+    The query and its summary are stored (un-numbered) in a global list.
+    Returns a dictionary with keys: query, summary, and follow_up.
+    """
+    # Fetch links if not provided.
+    if links is None:
+        if emit_status and sid and msg_id:
+            await emit_status(sid, msg_id, f"Searching links for query: '{query}'")
+        links = await get_links(query, max_results=5)
+    
+    # Emit the source URLs for this level.
+    if emit_sources and sid and msg_id:
+        await emit_sources(sid, msg_id, links)
+    
+    if emit_status and sid and msg_id:
+        await emit_status(sid, msg_id, f"Scraping content for query: '{query}'")
+    # Use our dedicated function to scrape and number each URL's content.
+    scraped_text = await scrape_contents_for_deep(query, links)
+    
+    if emit_status and sid and msg_id:
+        await emit_status(sid, msg_id, f"Summarizing content for query: '{query}'")
+    print("Sending to summarizer, ", scraped_text)
+    summary_obj = await summarize(scraped_text, query)
+    
+    # Save the query and its summary (without extra numbering) to our global deep summaries.
+    global_deep_summaries.append({
+        "query": query,
+        "summary": summary_obj.content
+    })
+    
+    result = {
+        "query": query,
+        "summary": summary_obj.content,
+        "follow_up": {}
+    }
+    
+    # Recurse if more depth is required.
+    if depth > 1:
+        for follow_q in summary_obj.moreQtn:
+            if emit_status and sid and msg_id:
+                await emit_status(sid, msg_id, f"Recursing for follow-up question: '{follow_q}'")
+            result["follow_up"][follow_q] = await deep_search(
+                follow_q,
+                depth=depth - 1,
+                sid=sid,
+                msg_id=msg_id,
+                emit_status=emit_status,
+                emit_sources=emit_sources
+            )
+    
+    if emit_status and sid and msg_id:
+        await emit_status(sid, msg_id, f"Completed deep search for query: '{query}'")
+    return result
+
+async def generate_final_summary() -> SummaryFormat:
+    """
+    Uses the global_deep_summaries list to generate an in-depth final summary.
+    Combines all recorded query-summary pairs (without added citation numbers) and passes them to the summarization function.
+    Returns a SummaryFormat object.
+    """
+    print("[INFO] Generating final summary from all query summaries...")
+    combined_content = ""
+    for entry in global_deep_summaries:
+        # No numbering is added here to avoid confusing the LLM.
+        combined_content += (
+            f"Query: {entry['query']}\n"
+            f"Summary: {entry['summary']}\n\n"
+        )
+    
+    # (Optional) Save combined content to a text file for debugging.
+    try:
+        with open('combined_sources.txt', 'w', encoding='utf-8') as f:
+            f.write(combined_content)
+        print("[INFO] Saved combined query summaries to combined_sources.txt")
+    except Exception as e:
+        print(f"[ERROR] Failed to save combined sources: {e}")
+    # print(combined_content)
+    max_retries = 3
+    retry_count = 0
+    
+    prompt = PromptTemplate(
+        template=(
+            "Below is a compilation of query summaries:\n\n"
+            "{combined_content}\n\n"
+            f"Today is {datetime.now().strftime('%Y-%m-%d')}"
+            "Mention the date if the user is query is news related. "
+            "Please generate a comprehensive in-depth summary that fully explains the topics from all directions. "
+            "please craft a thorough, well-rounded, and detailed response that directly addresses the user's question with clarity and depth. "
+            "You will output the summary in markdown format.\n\n"
+            "### Instructions\n"
+            "Organize the response into clear topics with appropriate headers, and include a concluding section that summarizes the key points. "
+            "Do not mention the source in the response, and dont use the citation label. "
+            "Do not add citations at the end of the response or make a list of citations at the end.\n\n"
+            "Produce a LONG response that addresses the query in depth and produce exactly 5 follow-up questions.\n\n"
+            "Produce a nuanced answer that covers all aspects of the query. "
+            "Take a step back and think about the query from all angles. "
+            "You're free to add your own knowledge and experience to the response.\n\n"
+            "This is a deep research, user expects a detailed and nuanced answer. "
+            "Don't just provide a simple answer, provide a detailed and nuanced answer.\n\n"
+            "The context may or may not have all the information needed to answer the query, at that time you can use your own knowledge and experience to answer the query. "
+            "For each provided query and its summary, generate a comprehensive summary that covers all the topics in depth. "
+            "If you are capable of adding in your own knowledge and experience to the response, please do so, when you think it is necessary. "
+            "Your experience should not be used to answer the query, but to add depth to the response. "
+            "For the things that can change over time, you should not use your experience to answer the query. "
+            "User expects a readable long answer with no citations preserved.\n\n"
+            "Break down the response into clear sections with appropriate headers and subheaders.\n\n"
+            "Dont write long paragraphs, break down the response into clear sections with appropriate headers and subheaders.\n\n"
+            "DONT FORGET TO RETURN THE RESPONSE IN JSON FORMAT.\n\n"
+            "### Response Format (Must be valid JSON):\n"
+            "content: \"The final summarized content with citations preserved\"\n"
+            "moreQtn: [\"Follow-up question 1\", \"Follow-up question 2\", \"Follow-up question 3\", \"Follow-up question 4\", \"Follow-up question 5\"]\n"
+            "{format_instructions}"
+        ),
+        input_variables=["combined_content"],
+        partial_variables={"format_instructions": parser.get_format_instructions()},
+    )
+    
+    base_chain = prompt | deep_search_llm | StrOutputParser()
+    retry_parser = RetryWithErrorOutputParser(
+        parser=parser,
+        retry_chain=base_chain,
+        max_retries=3
+    )
+    inputs = {"combined_content": combined_content}
+    while retry_count < max_retries:
+        try:
+            formatted_prompt_text = prompt.format(**inputs)
+            response = await base_chain.ainvoke(inputs)
+
+            # print("[DEBUG] Raw response from LLM:")
+            # print(response if response.strip() else "Empty response")
+            final_summary_obj = retry_parser.parse_with_prompt(
+                completion=response,
+                prompt_value=formatted_prompt_text
+            )
+            print("[INFO] Final summary generation complete.")
+            return final_summary_obj
+        except Exception as e:
+            print(f"[ERROR] Final summary generation failed: {e}")
+            retry_count += 1
+    print(f"[ERROR] Final summary generation failed even after {max_retries} retries.")
+    final_summary_obj = SummaryFormat(
+        content=f"Error generating final summary:",
+        moreQtn=[]
+    )
+    return final_summary_obj
