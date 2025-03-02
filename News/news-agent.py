@@ -330,13 +330,14 @@ async def sendMail(html_content):
 
     except Exception as e:
         print(f"❌ Error sending email: {e}")
+
 async def main():
     query = "Latest Global News"
     links = await get_links(query, max_results=2)
     _ = await deep_search(links, depth=1,links=links)
     final_summary_obj = await generate_final_summary()
     html_content = markdown.markdown(final_summary_obj.content)
-    sendMail(html_content)
+    await sendMail(html_content)
     with tempfile.NamedTemporaryFile("w", delete=False, suffix=".html") as f:
         f.write(html_content)
         temp_file_path = f.name 
