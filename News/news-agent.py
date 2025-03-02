@@ -11,6 +11,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.output_parsers import PydanticOutputParser
 from langchain.output_parsers.retry import RetryWithErrorOutputParser
 from langchain.memory import ConversationBufferMemory
+from datetime import datetime
 
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
@@ -195,7 +196,7 @@ async def deep_search(query: str, depth: int = 2, sid=None, msg_id=None,
     if emit_status and sid and msg_id:
         await emit_status(sid, msg_id, f"Scraping content for query: '{query}'")
     # Use our dedicated function to scrape and number each URL's content.
-    scraped_text = await scrape_contents_for_deep(query, links)
+    scraped_text = await scrape_contents(query, links)
     
     if emit_status and sid and msg_id:
         await emit_status(sid, msg_id, f"Summarizing content for query: '{query}'")
