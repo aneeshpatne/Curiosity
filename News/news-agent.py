@@ -317,7 +317,7 @@ async def sendMail(html_content):
     msg = MIMEMultipart()
     msg["From"] = EMAIL_SENDER
     msg["To"] = EMAIL_RECEIVER
-    msg["Subject"] = "Curiosity Testing"
+    msg["Subject"] = f"Curiosity News {datetime.now().strftime('%Y-%m-%d')}"
     msg.attach(MIMEText(html_content, "html"))
     try:
         # Establish SMTP connection
