@@ -12,7 +12,7 @@ from langchain.output_parsers import PydanticOutputParser
 from langchain.output_parsers.retry import RetryWithErrorOutputParser
 from langchain.memory import ConversationBufferMemory
 from datetime import datetime
-
+import markdown
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 openRouterKey = os.getenv("OPEN_ROUTER_KEY")
@@ -20,11 +20,12 @@ geminiKey = os.getenv("GEMINI_API_KEY")
 
 # ---------------------------------
 # LLM Options
-#summary_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='meta-llama/llama-3.3-70b-instruct:nitro', api_key=SecretStr(openRouterKey))
+summary_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='google/gemini-2.0-flash-lite-001', api_key=SecretStr(openRouterKey))
+deep_search_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='google/gemini-2.0-flash-lite-001', api_key=SecretStr(openRouterKey))
 agent_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
 #deep_search_llm = ChatGoogleGenerativeAI(model='gemini-2.0-flash-thinking-exp-01-21', api_key=SecretStr(geminiKey))
-summary_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
-deep_search_llm = ChatOpenAI(model='o1-mini', api_key=SecretStr(api_key))
+# summary_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
+# deep_search_llm = ChatOpenAI(model='o1-mini', api_key=SecretStr(api_key))
 
 # ---------------------------------
 # User Agent options to avoid blocking.
@@ -307,6 +308,7 @@ async def main():
     links = await get_links(query, max_results=2)
     _ = await deep_search(links, depth=1,links=links)
     final_summary_obj = await generate_final_summary()
+    html_content = markdown.markdown(final_summary_obj.content)
     print(final_summary_obj)
     return final_summary_obj
 if __name__ == "__main__":
