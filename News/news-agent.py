@@ -17,6 +17,7 @@ import webbrowser
 import tempfile
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import smtplib
 
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
@@ -312,13 +313,30 @@ async def generate_final_summary() -> SummaryFormat:
         moreQtn=[]
     )
     return final_summary_obj
+async def sendMail(html_content):
+    msg = MIMEMultipart()
+    msg["From"] = EMAIL_SENDER
+    msg["To"] = EMAIL_RECEIVER
+    msg["Subject"] = "Curiosity Testing"
+    msg.attach(MIMEText(html_content, "html"))
+    try:
+        # Establish SMTP connection
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()  # Secure connection
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
 
+        print("✅ Email sent successfully!")
+
+    except Exception as e:
+        print(f"❌ Error sending email: {e}")
 async def main():
     query = "Latest Global News"
     links = await get_links(query, max_results=2)
     _ = await deep_search(links, depth=1,links=links)
     final_summary_obj = await generate_final_summary()
     html_content = markdown.markdown(final_summary_obj.content)
+    sendMail(html_content)
     with tempfile.NamedTemporaryFile("w", delete=False, suffix=".html") as f:
         f.write(html_content)
         temp_file_path = f.name 
