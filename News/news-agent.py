@@ -15,11 +15,18 @@ from datetime import datetime
 import markdown
 import webbrowser
 import tempfile
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 openRouterKey = os.getenv("OPEN_ROUTER_KEY")
 geminiKey = os.getenv("GEMINI_API_KEY")
+SMTP_SERVER = os.getenv("SMTP_SERVER")
+SMTP_PORT = int(os.getenv("SMTP_PORT"))
+EMAIL_SENDER = os.getenv("EMAIL_SENDER")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 
 # ---------------------------------
 # LLM Options
