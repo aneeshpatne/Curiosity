@@ -36,7 +36,7 @@ USER_AGENTS = [
 
 semaphore = asyncio.Semaphore(7)
 ddgs = DDGS()
-
+global_deep_summaries = []
 
 class SummaryFormat(BaseModel):
     content: str = Field(description="The summarized content.")
@@ -119,18 +119,16 @@ async def summarize(content: str, query: str) -> SummaryFormat:
             "You will output the summary in markdown format.\n\n"
             "### Instructions\n"
             "Organize the response into clear topics with appropriate headers, and include a concluding section that summarizes the key points. "
-            "Ensure the response remains focused, preserving citation labels (e.g., [1], [2]) for accuracy. "
-            "The sources should be separated and not combined like [1 2 3] but rather formatted individually as [1] [2] [3]. "
-            "The citations should be placed in their own square brackets, and separated by ONLY SPACE no COMMA. "
-            "Dont mention the source in the response, only use the citation label. "
+            "Dont mention the source in the response, or use the citation label. "
             "You will not say 'according to source 1', 'source 2 says', etc. "
             "Do not add citations at the end of the response or make a list of citations at the end.\n\n"
             "Additionally, generate exactly 20 follow-up questions that go to the root of the problem. "
+            "The follow up questions should break down the summarized content and then go a step back to generate the follow-up questions. "
             "The follow up questions should essentially point to questions that can be answered by articles not research papers. "
             "These questions are the questions that might arise after reading the summarized content. "
             "Breakdown the summrized content and then go a step back to generate the follow-up questions. "
             "The questions should be like 'What is the impact of X on Y?' or 'How does X affect Y?' or 'How are X?' "
-            "The follow up questions should be standalone as in they should generate appropriate answers, when that same query is pasted on a search engine. "
+            "Each follow-up question should be self-contained and formulated as a complete search query that would yield relevant results when entered directly into a search engine."
             "Return the questions as a list.\n\n"
             "### Response Format (Must be valid JSON):\n"
             "content: \"The summarized content.\"\n"
