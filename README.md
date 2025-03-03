@@ -6,7 +6,7 @@ Curiosity is an AI-powered search agent that combines web search capabilities wi
 
 ## Project Structure
 
-The repository is organized into two main components:
+The repository is organized into three main components:
 
 ```
 .
@@ -17,11 +17,12 @@ The repository is organized into two main components:
 │   ├── deep-search.py    # Deep search implementation
 │   └── Deprecated/       # Older search implementations
 ├── News/
-|   ├─ news-agent.py      # Global news Deep seach mailer
+|   ├─ news-agent.py      # Global news deep search mailer
+|   ├─ run-newsletter.sh  # Shell script for automating newsletter execution
 └── README.md
 ```
 
-## Features
+# Curiosity Search
 
 - **Multiple Search Modes**:
 
@@ -51,84 +52,52 @@ The repository is organized into two main components:
 - [LangChain](https://langchain.readthedocs.io/) for LLM integration
 - Multiple LLM support (OpenAI, Google Gemini, etc.)
 
-## Setup Instructions
+  ## How It Works
 
-### Backend Setup
+  1.  **Query Transmission**: The frontend sends user queries to the backend via Socket.io
 
-1. Navigate to the Search directory:
+  2.  **Web Search**: Backend performs searches using DuckDuckGo API
 
-   ```bash
-   cd Search
-   ```
+  3.  **Real-time Updates**: Retrieved URLs are streamed back to frontend instantly
 
-2. Create a virtual environment and activate it:
+  4.  **Content Scraping**: Backend uses Playwright to extract content from URLs
 
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+  5.  **AI Processing**: Content is analyzed and summarized by LLMs with source citations
 
-3. Install dependencies:
+  6.  **Deep Search**: For comprehensive queries, follow-up questions are searched recursively
 
-   ```bash
-   pip install langchain langchain-openai langchain-google-genai playwright python-socketio python-dotenv duckduckgo-search fastapi uvicorn pydantic
-   ```
+  7.  **Result Delivery**: Final summarized content is sent back to frontend
 
-4. Install Playwright browsers:
+# Curiosity Newsletter
 
-   ```bash
-   playwright install chromium
-   ```
+Curiosity Newsletter is an automated daily global news summary generator that fetches the latest news, processes and summarizes it using AI, and then sends it as an email. It utilizes a **modified version of the deep search** algorithm to aggregate information efficiently from multiple sources. It leverages **DuckDuckGo Search**, **Playwright**, and **AI-powered summarization models** to provide detailed, structured, and insightful news updates.
 
-5. Create a `.env` file with your API keys:
+## Features
 
-   ```
-   OPENAI_API_KEY=your_openai_key
-   OPEN_ROUTER_KEY=your_openrouter_key
-   GEMINI_API_KEY=your_gemini_key
-   ```
+- **Web Scraping**: Uses DuckDuckGo Search to find relevant news links.
+- **Content Extraction**: Scrapes website content efficiently with Playwright.
+- **AI Summarization**: Uses OpenAI and Gemini models to generate structured news summaries.
+- **Email Automation**: Sends daily news updates directly to your inbox.
+- **Markdown-to-HTML Conversion**: Formats the content into a visually appealing email.
 
-6. Start the backend server:
-   ```bash
-   python search-agent.py
-   ```
+---
 
-### Frontend Setup
+## Technologies Used
 
-1. Navigate to the frontend directory:
+- **Python**
+- **Playwright** for web scraping
+- **DuckDuckGo Search API** for fetching news links
+- **LangChain & OpenAI API** for AI-driven summarization
+- **Markdown & SMTP** for formatting and email delivery
+- **Pydantic** for structured data parsing
 
-   ```bash
-   cd Frontend/curiosity
-   ```
-
-2. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-3. Start the development server:
-
-   ```bash
-   npm run dev
-   ```
-
-4. Open [http://localhost:3000](http://localhost:3000) in your browser
-
-## Usage
-
-1. Open the Curiosity interface in your browser
-2. Select a search type from the dropdown (Normal, Pro, or Deep)
-3. Enter your query in the text field and press Enter or click Send
-4. Watch as Curiosity searches the web, finds relevant sources, and generates a comprehensive answer
-5. Follow-up questions will be displayed at the bottom of the response for further exploration
+---
 
 ## How It Works
 
-1. The frontend sends the user query to the backend via Socket.io
-2. The backend performs a web search using DuckDuckGo
-3. Retrieved URLs are sent back to the frontend in real-time
-4. The backend scrapes content from the URLs using Playwright
-5. Content is summarized using LLMs with appropriate citations
-6. For deep searches, follow-up questions are also searched recursively
-7. The final summarized result is sent back to the frontend
+1. **Fetch Links**: The script searches for top news links using DuckDuckGo.
+2. **Scrape Content**: Uses Playwright to extract important text from the pages.
+3. **AI Summarization**: Summarizes the news articles using LLMs.
+4. **Format & Send**: Converts the summary into HTML and emails it to the receiver.
+
+---
