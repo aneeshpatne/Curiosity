@@ -16,6 +16,8 @@ The repository is organized into two main components:
 │   ├── search-agent.py   # Main search agent implementation
 │   ├── deep-search.py    # Deep search implementation
 │   └── Deprecated/       # Older search implementations
+├── News/
+|   ├─ news-agent.py      # Global news Deep seach mailer
 └── README.md
 ```
 
