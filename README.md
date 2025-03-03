@@ -52,21 +52,15 @@ The repository is organized into three main components:
 - [LangChain](https://langchain.readthedocs.io/) for LLM integration
 - Multiple LLM support (OpenAI, Google Gemini, etc.)
 
-  ## How It Works
+## How It Works
 
-  1.  **Query Transmission**: The frontend sends user queries to the backend via Socket.io
-
-  2.  **Web Search**: Backend performs searches using DuckDuckGo API
-
-  3.  **Real-time Updates**: Retrieved URLs are streamed back to frontend instantly
-
-  4.  **Content Scraping**: Backend uses Playwright to extract content from URLs
-
-  5.  **AI Processing**: Content is analyzed and summarized by LLMs with source citations
-
-  6.  **Deep Search**: For comprehensive queries, follow-up questions are searched recursively
-
-  7.  **Result Delivery**: Final summarized content is sent back to frontend
+1.  **Query Transmission**: The frontend sends user queries to the backend via Socket.io
+2.  **Web Search**: Backend performs searches using DuckDuckGo API
+3.  **Real-time Updates**: Retrieved URLs are streamed back to frontend instantly
+4.  **Content Scraping**: Backend uses Playwright to extract content from URLs
+5.  **AI Processing**: Content is analyzed and summarized by LLMs with source citations
+6.  **Deep Search**: For comprehensive queries, follow-up questions are searched recursively
+7.  **Result Delivery**: Final summarized content is sent back to frontend
 
 # Curiosity Newsletter
 
@@ -80,8 +74,6 @@ Curiosity Newsletter is an automated daily global news summary generator that fe
 - **Email Automation**: Sends daily news updates directly to your inbox.
 - **Markdown-to-HTML Conversion**: Formats the content into a visually appealing email.
 
----
-
 ## Technologies Used
 
 - **Python**
@@ -90,8 +82,6 @@ Curiosity Newsletter is an automated daily global news summary generator that fe
 - **LangChain & OpenAI API** for AI-driven summarization
 - **Markdown & SMTP** for formatting and email delivery
 - **Pydantic** for structured data parsing
-
----
 
 ## How It Works
 
