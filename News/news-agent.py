@@ -32,11 +32,11 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 # ---------------------------------
 # LLM Options
 summary_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='google/gemini-2.0-flash-lite-001', api_key=SecretStr(openRouterKey))
-deep_search_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='google/gemini-2.0-flash-001', api_key=SecretStr(openRouterKey))
+#deep_search_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='google/gemini-2.0-flash-001', api_key=SecretStr(openRouterKey))
 agent_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
 #deep_search_llm = ChatGoogleGenerativeAI(model='gemini-2.0-flash-thinking-exp-01-21', api_key=SecretStr(geminiKey))
 # summary_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
-# deep_search_llm = ChatOpenAI(model='o1-mini', api_key=SecretStr(api_key))
+deep_search_llm = ChatOpenAI(model='o1-mini', api_key=SecretStr(api_key))
 
 # ---------------------------------
 # User Agent options to avoid blocking.
@@ -86,15 +86,22 @@ async def get_links(topic: str, max_results: int = 7) -> list:
     Uses DuckDuckGo to fetch search result links for the given topic.
     """
     print(f"[INFO] Searching for links related to query: '{topic}'")
-    while True:
+    retries = 0
+    max_retries = 20
+    while retries < max_retries:
         try:
             result = ddgs.text(topic, max_results=max_results)
             links = [r['href'] for r in result]
             print(f"[INFO] Found {len(links)} links for query: '{topic}'")
             return links
         except Exception as e:
-            print(f"[ERROR] DuckDuckGo rate limit reached. Waiting for 3 minutes... {e}")
-            await asyncio.sleep(180)
+            retries += 1
+            print(f"[ERROR] DuckDuckGo rate limit reached. Attempt {retries}/{max_retries}. Waiting for 3 minutes... {e}")
+            wait_time = random.randint(60, 300)
+            print(f"[INFO] Waiting for {wait_time // 60} minutes and {wait_time % 60} seconds before retrying...")
+            await asyncio.sleep(wait_time)
+    print(f"[ERROR] Failed to retrieve links after {max_retries} attempts.")
+    return []
         
     
 
@@ -126,6 +133,7 @@ async def summarize(content: str, query: str) -> SummaryFormat:
         template=(
             "The user has submitted the following query: '{query}'. Using the provided sources: {content}, "
             f"Today is {datetime.now().strftime('%Y-%m-%d')}"
+            "You are summarizing a news"
             "please craft a thorough, well-rounded, and detailed response that directly addresses the user's question with clarity and depth. "
             "You will output the summary in markdown format.\n\n"
             "### Instructions\n"
@@ -134,6 +142,8 @@ async def summarize(content: str, query: str) -> SummaryFormat:
             "You will not say 'according to source 1', 'source 2 says', etc. "
             "Do not add citations at the end of the response or make a list of citations at the end.\n\n"
             "Additionally, generate exactly 20 follow-up questions that go to the root of the problem. "
+            "The follow-up questions should be related to those news articles. "
+            "The follow-up questions should build upon the news, and provide more follow up about the news"
             "The follow up questions should break down the summarized content and then go a step back to generate the follow-up questions. "
             "The follow up questions should essentially point to questions that can be answered by articles not research papers. "
             "These questions are the questions that might arise after reading the summarized content. "
@@ -247,12 +257,13 @@ async def generate_final_summary() -> SummaryFormat:
     max_retries = 3
     retry_count = 0
     
-    prompt = PromptTemplate(
-        template=(
+    prompt = (
             "Below is a compilation of query summaries:\n\n"
-            "{combined_content}\n\n"
+            f"data: {combined_content}\n\n"
+            "If data is empty, end your response NOW. Telling user to check Cron logs."
             f"Today is {datetime.now().strftime('%Y-%m-%d')}"
             "Mention the date if the user is query is news related. "
+            "Dont fixate on a specific topic its general news so explain all the topics, nicely. "
             "Please generate a comprehensive in-depth summary that fully explains the topics from all directions. "
             "please craft a thorough, well-rounded, and detailed response that directly addresses the user's question with clarity and depth. "
             "You will output the summary in markdown format.\n\n"
@@ -263,61 +274,37 @@ async def generate_final_summary() -> SummaryFormat:
             "Produce a LONG response that addresses the query in depth and produce exactly 5 follow-up questions.\n\n"
             "Produce a nuanced answer that covers all aspects of the query. "
             "Take a step back and think about the query from all angles. "
-            "You're free to add your own knowledge and experience to the response.\n\n"
+            "You can not use own knowledge and experience to the response.\n\n"
             "This is a deep research, user expects a detailed and nuanced answer. "
             "Don't just provide a simple answer, provide a detailed and nuanced answer.\n\n"
-            "The context may or may not have all the information needed to answer the query, at that time you can use your own knowledge and experience to answer the query. "
             "For each provided query and its summary, generate a comprehensive summary that covers all the topics in depth. "
-            "If you are capable of adding in your own knowledge and experience to the response, please do so, when you think it is necessary. "
-            "Your experience should not be used to answer the query, but to add depth to the response. "
-            "For the things that can change over time, you should not use your experience to answer the query. "
             "User expects a readable long answer with no citations preserved.\n\n"
             "Break down the response into clear sections with appropriate headers and subheaders.\n\n"
             "Dont write long paragraphs, break down the response into clear sections with appropriate headers and subheaders.\n\n"
-            "DONT FORGET TO RETURN THE RESPONSE IN JSON FORMAT.\n\n"
-            "### Response Format (Must be valid JSON):\n"
-            "content: \"The final summarized content with citations preserved\"\n"
-            "moreQtn: [\"Follow-up question 1\", \"Follow-up question 2\", \"Follow-up question 3\", \"Follow-up question 4\", \"Follow-up question 5\"]\n"
-            "{format_instructions}"
-        ),
-        input_variables=["combined_content"],
-        partial_variables={"format_instructions": parser.get_format_instructions()},
+            
     )
-    
-    base_chain = prompt | deep_search_llm | StrOutputParser()
-    retry_parser = RetryWithErrorOutputParser(
-        parser=parser,
-        retry_chain=base_chain,
-        max_retries=3
-    )
-    inputs = {"combined_content": combined_content}
     while retry_count < max_retries:
         try:
-            formatted_prompt_text = prompt.format(**inputs)
-            response = await base_chain.ainvoke(inputs)
-
+            # formatted_prompt_text = prompt.format(**inputs)
+            response = await deep_search_llm.ainvoke(prompt)
             # print("[DEBUG] Raw response from LLM:")
             # print(response if response.strip() else "Empty response")
-            final_summary_obj = retry_parser.parse_with_prompt(
-                completion=response,
-                prompt_value=formatted_prompt_text
-            )
+            # final_summary_obj = retry_parser.parse_with_prompt(
+            #     completion=response,
+            #     prompt_value=formatted_prompt_text
+            # )
             print("[INFO] Final summary generation complete.")
-            return final_summary_obj
+            return response.content
         except Exception as e:
             print(f"[ERROR] Final summary generation failed: {e}")
             retry_count += 1
     print(f"[ERROR] Final summary generation failed even after {max_retries} retries.")
-    final_summary_obj = SummaryFormat(
-        content=f"Error generating final summary:",
-        moreQtn=[]
-    )
-    return final_summary_obj
+    return "The output could not be generated."
 async def sendMail(html_content):
     msg = MIMEMultipart()
     msg["From"] = EMAIL_SENDER
     msg["To"] = EMAIL_RECEIVER
-    msg["Subject"] = f"Curiosity News {datetime.now().strftime('%Y-%m-%d')}"
+    msg["Subject"] = f"Curiosity Daily Global Updates:  {datetime.now().strftime('%d-%m-%Y')}"
     msg.attach(MIMEText(html_content, "html"))
     try:
         # Establish SMTP connection
@@ -332,11 +319,11 @@ async def sendMail(html_content):
         print(f"❌ Error sending email: {e}")
 
 async def main():
-    query = "Latest Global News"
-    links = await get_links(query, max_results=2)
-    _ = await deep_search(links, depth=1,links=links)
+    query = "Global News"
+    links = await get_links(query, max_results=20)
+    _ = await deep_search(links, depth=2,links=links)
     final_summary_obj = await generate_final_summary()
-    html_body = markdown.markdown(final_summary_obj.content)
+    html_body = markdown.markdown(final_summary_obj)
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
