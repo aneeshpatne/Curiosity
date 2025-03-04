@@ -80,8 +80,9 @@ async def scrape_page(context, url: str) -> str:
             return f"Error scraping page: {str(e)}"
         finally:
             await page.close()
-
+link_count = 0
 async def get_links(topic: str, max_results: int = 7) -> list:
+    global link_count
     """
     Uses DuckDuckGo to fetch search result links for the given topic.
     """
@@ -93,6 +94,7 @@ async def get_links(topic: str, max_results: int = 7) -> list:
             result = ddgs.text(topic, max_results=max_results)
             links = [r['href'] for r in result]
             print(f"[INFO] Found {len(links)} links for query: '{topic}'")
+            link_count += max_results
             return links
         except Exception as e:
             retries += 1
@@ -173,23 +175,30 @@ async def summarize(content: str, query: str) -> SummaryFormat:
 
     # Prepare inputs
     inputs = {"query": query, "content": content}
-
-    try:
-        # 1) Format the prompt to get a string or PromptValue
-        formatted_prompt_text = prompt.format(**inputs)  # a string
-        response = await base_chain.ainvoke(inputs)
-        structured_output = retry_parser.parse_with_prompt(
-            completion=response,
-            prompt_value=formatted_prompt_text
-        )
-        print(f"[INFO] Summarization completed for query: '{query}'")
-    except Exception as e:
-        structured_output = SummaryFormat(
-            content=f"Error parsing structured output. {e}",
-            moreQtn=[]
-        )
-        print(f"[ERROR] Summarization failed for query: '{query}'")
+    max_retries = 3
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            # 1) Format the prompt to get a string or PromptValue
+            formatted_prompt_text = prompt.format(**inputs)  # a string
+            response = await base_chain.ainvoke(inputs)
+            structured_output = retry_parser.parse_with_prompt(
+                completion=response,
+                prompt_value=formatted_prompt_text
+            )
+            print(f"[INFO] Summarization completed for query: '{query}'")
+            return structured_output
+        except Exception as e:
+            print(f"[ERROR] Summarization failed for query: '{query}' after {retry_count + 1} retries: {e}")
+            retry_count += 1
+            await asyncio.sleep(180)
+    structured_output = SummaryFormat(
+        content=f"Error parsing structured output, after max retries. Please check the logs for more details.",
+        moreQtn=[]
+    )
+    print(f"[ERROR] Summarization failed for query: '{query}'")
     return structured_output
+    
 
 
 async def deep_search(query: str, depth: int = 2, links: list = None) -> dict:
@@ -460,8 +469,9 @@ async def main():
     <body>
         <div class="email-container">
             <h2>📢 Curiosity Daily News</h2>
+            <p>Curiosity Scraped, Read and summarised {link_count} pages today</p>
             {html_body}
-            <p class="footer">This is an automated email. Stay informed!</p>
+            <p class="footer">Never Stop fighting!</p>
         </div>
     </body>
     </html>
