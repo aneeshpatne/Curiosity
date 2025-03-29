@@ -32,6 +32,7 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 # ---------------------------------
 # LLM Options
 summary_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='google/gemini-2.0-flash-lite-001', api_key=SecretStr(openRouterKey))
+summary_llm_fallback = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
 #deep_search_llm = ChatOpenAI(base_url='https://openrouter.ai/api/v1', model='google/gemini-2.0-flash-001', api_key=SecretStr(openRouterKey))
 agent_llm = ChatOpenAI(model='gpt-4o-mini', api_key=SecretStr(api_key))
 #deep_search_llm = ChatGoogleGenerativeAI(model='gemini-2.0-flash-thinking-exp-01-21', api_key=SecretStr(geminiKey))
@@ -165,39 +166,32 @@ async def summarize(content: str, query: str) -> SummaryFormat:
         partial_variables={"format_instructions": parser.get_format_instructions()},
     )
 
-    # Build the chain
-    base_chain = prompt | summary_llm | StrOutputParser()
-    retry_parser = RetryWithErrorOutputParser(
-        parser=parser,
-        retry_chain=base_chain,
-        max_retries=3
-    )
-
-    # Prepare inputs
     inputs = {"query": query, "content": content}
-    max_retries = 3
-    retry_count = 0
-    while retry_count < max_retries:
+    formatted_prompt_text = prompt.format(**inputs)
+    
+    try:
+        # First try with primary LLM
+        base_chain = prompt | summary_llm | StrOutputParser()
+        response = await base_chain.ainvoke(inputs)
+        structured_output = parser.parse(response)
+        print(f"[INFO] Summarization completed for query: '{query}'")
+        return structured_output
+    except Exception as e:
+        print(f"[WARNING] Primary LLM failed for query: '{query}': {e}. Trying fallback LLM.")
         try:
-            # 1) Format the prompt to get a string or PromptValue
-            formatted_prompt_text = prompt.format(**inputs)  # a string
-            response = await base_chain.ainvoke(inputs)
-            structured_output = retry_parser.parse_with_prompt(
-                completion=response,
-                prompt_value=formatted_prompt_text
-            )
-            print(f"[INFO] Summarization completed for query: '{query}'")
+            # Use fallback LLM if primary fails
+            fallback_chain = prompt | summary_llm_fallback | StrOutputParser()
+            response = await fallback_chain.ainvoke(inputs)
+            structured_output = parser.parse(response)
+            print(f"[INFO] Summarization completed with fallback LLM for query: '{query}'")
             return structured_output
-        except Exception as e:
-            print(f"[ERROR] Summarization failed for query: '{query}' after {retry_count + 1} retries: {e}")
-            retry_count += 1
-            await asyncio.sleep(180)
-    structured_output = SummaryFormat(
-        content=f"Error parsing structured output, after max retries. Please check the logs for more details.",
-        moreQtn=[]
-    )
-    print(f"[ERROR] Summarization failed for query: '{query}'")
-    return structured_output
+        except Exception as e2:
+            print(f"[ERROR] Both primary and fallback LLMs failed for query: '{query}': {e2}")
+            # Return empty result if both LLMs fail
+            return SummaryFormat(
+                content=f"Error generating summary for '{query}'. Please check the logs for more details.",
+                moreQtn=[]
+            )
     
 
 
