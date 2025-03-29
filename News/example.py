@@ -1,12 +1,16 @@
 import smtplib
 from email.mime.text import MIMEText
+import os
+import dotenv
+
+dotenv.load_dotenv()
+
 
 # iCloud SMTP settings
 SMTP_SERVER = "smtp.mail.me.com"
 SMTP_PORT = 587  # Use 465 if SSL
-EMAIL = "libra_anil@icloud.com"
-APP_PASSWORD = "ynpw-ptkg-cgzq-xugg"  # Use the generated app-specific password
-
+EMAIL = os.getenv("ICLOUD_EMAIL") 
+APP_PASSWORD = os.getenv("ICLOUD_APP_PASSWORD")  
 # Email content
 msg = MIMEText("This is a test email from iCloud SMTP.")
 msg["Subject"] = "Test Email"
